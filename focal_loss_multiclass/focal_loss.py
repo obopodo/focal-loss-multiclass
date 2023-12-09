@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import lightgbm as lgb
 import numpy as np
 
@@ -15,12 +13,14 @@ class FocalLossMulti:
 
         FL = -(1 - p_t)^gamma * log(p_t)
 
-        The aim is to reduce the loss for well-classified examples and put more focus on hard, misclassified examples.
+        The aim of this loss is to reduce the loss for well-classified examples
+        and put more focus on hard, misclassified examples.
 
         Parameters
         ----------
         gamma : float
-            Main parameter of focal loss. The higher gamma, the lower penalty for good enough predictions.
+            Main parameter of focal loss. The higher gamma,
+            the lower penalty for good enough predictions.
         n_classes : int, optional
             Number of classes, by default 3
         use_sk_api : bool, optional
@@ -59,14 +59,14 @@ class FocalLossMulti:
 
         Returns
         -------
-        float
-            Focal loss value
+        np.ndarray (n_samples,)
+            Focal loss value for each observation
         """
         p_true_class = self._preds_for_true_class(y_true, pred_probas)
         return -((1 - p_true_class) ** self.gamma) * np.log(p_true_class)
 
     def grad_hess(
-        self, pred_probas: np.ndarray, p_true_class: np.ndarray, class_factor: np.ndarray
+        self, y_true: np.ndarray, pred_probas: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         """Gradient and Hessian of focal loss for the whole dataset.
 
@@ -76,28 +76,33 @@ class FocalLossMulti:
 
         Parameters
         ----------
+        y_true : np.ndarray (n_samples,)
+            Class labels
         pred_probas : np.ndarray (n_samples, n_classes)
             Class probabilities - predictions after sigmoid
-        p_true_class : np.ndarray (n_samples,)
-            Probabilities for true class
-        class_factor : np.ndarray (n_samples, n_classes)
-            1 - pred_probas for true class, 0 - pred_probas for other classes
-            (d_tj - pred_probas) where d_tj - Kronecker delta, t - index of a true class
 
         Returns
         -------
         tuple[np.ndarray, np.ndarray]
-            grad and hess of focal loss
+            Gradient and Hessian of focal loss.
             Each array has shape (n_samples, n_classes)
         """
+
+        y_ohe = one_hot_encode(y_true, self.n_classes)
+        p_true_class = self._preds_for_true_class(y_true, pred_probas)
+
+        class_factor = y_ohe - pred_probas
+
         log_p_t = np.log(p_true_class)
         p_1 = 1 - p_true_class
         p_1_g_2 = p_1 ** (self.gamma - 2)
 
+        # Gradient
         G_AA = self.gamma * p_true_class * (p_1 ** (self.gamma - 1)) * log_p_t
         G_BB = p_1**self.gamma
         grad = (G_AA - G_BB).reshape(-1, 1) * class_factor
 
+        # Hessian
         H_A1 = self.gamma * p_true_class * p_1_g_2
         H_A2 = (p_1) * (log_p_t + 2) - (self.gamma - 1) * p_true_class
         H_AA = (H_A1 * H_A2).reshape(-1, 1) * class_factor
@@ -128,17 +133,11 @@ class FocalLossMulti:
         """
         y_true = train_data.get_label()
         if LGB_OLD:
+            # lgbm before 4.0.0 returns preds as 1-D array
             preds = preds.reshape((y_true.size, -1), order="F")
 
         pred_probas = softmax(preds)
-        y_ohe = one_hot_encode(y_true, self.n_classes)
-
-        class_factor = y_ohe - pred_probas
-        p_true_class = self._preds_for_true_class(y_true, pred_probas)
-
-        grad, hess = self.grad_hess(
-            pred_probas=pred_probas, p_true_class=p_true_class, class_factor=class_factor
-        )
+        grad, hess = self.grad_hess(y_true=y_true, pred_probas=pred_probas)
 
         if LGB_OLD:
             # lgbm before 4.0.0 expects 1-D arrays
@@ -146,9 +145,25 @@ class FocalLossMulti:
             hess = hess.ravel(order="F")
         return grad, hess
 
-    def lgb_eval(self, preds: np.ndarray, train_data: lgb.Dataset) -> Tuple[str, float, bool]:
+    def lgb_eval(self, preds: np.ndarray, train_data: lgb.Dataset) -> tuple[str, float, bool]:
+        """LightGBM evaluation function for focal loss.
+
+        Parameters
+        ----------
+        preds : np.ndarray
+            Raw preds from LightGBM, float values in (-inf, inf)
+        train_data : lgb.Dataset
+            Train dataset, used to get class labels
+
+        Returns
+        -------
+        tuple[str, float, bool]
+            Tuple with metric name, metric value, is_higher_better
+        """
         y_true = train_data.get_label()
-        preds = preds.reshape((y_true.size, -1), order="F")
+        if LGB_OLD:
+            # lgbm before 4.0.0 returns preds as 1-D array
+            preds = preds.reshape((y_true.size, -1), order="F")
 
         pred_probas = softmax(preds)
         is_higher_better = False
