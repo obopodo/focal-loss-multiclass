@@ -11,10 +11,10 @@ packages = [{ include = "focal_loss_multiclass" }]
 python = "^3.11"
 numpy = "^1.0"
 lightgbm = "^3.3"
-pytest = "^7.4.3"
 
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.0.9"
+pytest = "^7.4.3"
 
 [build-system]
 requires = ["poetry-core"]
