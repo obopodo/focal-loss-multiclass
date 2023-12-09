@@ -1,17 +1,17 @@
 [tool.poetry]
 name = "focal-loss-multiclass"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multiclass focal loss implementation aimed to use in gradient boosted trees algorithms like LightGBM."
 authors = ["Boris Podolny <bpodolnyi@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "focal_loss_multiclass"}]
+packages = [{ include = "focal_loss_multiclass" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 numpy = "^1.0"
 lightgbm = "^3.3"
-scipy = "^1.10"
+pytest = "^7.4.3"
 
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.0.9"
